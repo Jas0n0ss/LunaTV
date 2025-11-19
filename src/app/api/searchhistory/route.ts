@@ -6,7 +6,8 @@ import { getAuthInfoFromCookie } from '@/lib/auth';
 import { getConfig } from '@/lib/config';
 import { db } from '@/lib/db';
 
-export const runtime = 'nodejs';
+export const runtime = 'edge';
+export const dynamic = 'force-dynamic';
 
 // 最大保存条数（与客户端保持一致）
 const HISTORY_LIMIT = 20;

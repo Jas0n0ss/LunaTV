@@ -1,17 +1,41 @@
 /* eslint-disable @typescript-eslint/no-explicit-any,no-console */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { promisify } from 'util';
-import { gunzip } from 'zlib';
+import pako from 'pako';
 
 import { getAuthInfoFromCookie } from '@/lib/auth';
 import { configSelfCheck, setCachedConfig } from '@/lib/config';
 import { SimpleCrypto } from '@/lib/crypto';
 import { db } from '@/lib/db';
 
-export const runtime = 'nodejs';
+export const runtime = 'edge';
+export const dynamic = 'force-dynamic';
 
-const gunzipAsync = promisify(gunzip);
+function base64ToUint8Array(base64: string): Uint8Array {
+  try {
+    // browser / edge
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    // @ts-ignore
+    if (typeof atob !== 'undefined') {
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-ignore
+      const binaryStr = atob(base64);
+      const len = binaryStr.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binaryStr.charCodeAt(i);
+      }
+      return bytes;
+    }
+  } catch (e) {
+    // fallthrough to Buffer-based solution
+  }
+
+  // Node fallback
+  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  // @ts-ignore
+  return Uint8Array.from(Buffer.from(base64, 'base64'));
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -59,10 +83,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '解密失败，请检查密码是否正确' }, { status: 400 });
     }
 
-    // 解压缩数据
-    const compressedBuffer = Buffer.from(decryptedData, 'base64');
-    const decompressedBuffer = await gunzipAsync(compressedBuffer);
-    const decompressedData = decompressedBuffer.toString();
+    // 解压缩数据（base64 -> Uint8Array -> pako.ungzip -> string）
+    const compressedUint8 = base64ToUint8Array(decryptedData);
+    const decompressedUint8 = pako.ungzip(compressedUint8);
+    const decompressedData = new TextDecoder().decode(decompressedUint8);
 
     // 解析JSON数据
     let importData: any;

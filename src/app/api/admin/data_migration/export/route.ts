@@ -1,17 +1,35 @@
 /* eslint-disable @typescript-eslint/no-explicit-any,no-console */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { promisify } from 'util';
-import { gzip } from 'zlib';
+import pako from 'pako';
 
 import { getAuthInfoFromCookie } from '@/lib/auth';
 import { SimpleCrypto } from '@/lib/crypto';
 import { db } from '@/lib/db';
 import { CURRENT_VERSION } from '@/lib/version';
 
-export const runtime = 'nodejs';
+export const runtime = 'edge';
+export const dynamic = 'force-dynamic';
 
-const gzipAsync = promisify(gzip);
+function uint8ArrayToBase64(u8: Uint8Array): string {
+  try {
+    // browser / edge
+    let binary = '';
+    const len = u8.length;
+    for (let i = 0; i < len; i++) {
+      binary += String.fromCharCode(u8[i]);
+    }
+    // btoa is available in Edge runtime
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    // @ts-ignore
+    return typeof btoa !== 'undefined' ? btoa(binary) : Buffer.from(u8).toString('base64');
+  } catch (e) {
+    // fallback to Buffer if present
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    // @ts-ignore
+    return typeof Buffer !== 'undefined' ? Buffer.from(u8).toString('base64') : '';
+  }
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -88,11 +106,12 @@ export async function POST(req: NextRequest) {
     // 将数据转换为JSON字符串
     const jsonData = JSON.stringify(exportData);
 
-    // 先压缩数据
-    const compressedData = await gzipAsync(jsonData);
+  // 先压缩数据（使用 pako，在 Edge 上可用）
+  const compressedUint8 = pako.gzip(jsonData);
+  const compressedBase64 = uint8ArrayToBase64(compressedUint8);
 
-    // 使用提供的密码加密压缩后的数据
-    const encryptedData = SimpleCrypto.encrypt(compressedData.toString('base64'), password);
+  // 使用提供的密码加密压缩后的数据
+  const encryptedData = SimpleCrypto.encrypt(compressedBase64, password);
 
     // 生成文件名
     const now = new Date();
